@@ -183,12 +183,19 @@ Bottle则支持了更多的数据类型，它甚至添加了一个 Content-Lengt
 数据类型|	介绍
 -------------------|-------------------------
 字典	|Python 内置的字典类型数据将被自动被转换为JSON 字符串，并且添加头部信息Content-Type为 'application/json' 的头信息返回至浏览器，这让我们可以很方便的建立基于JSON的API
+
 空字符串，False，None或者任何非真的数据 |	Bottle返回空，Content-Length设置为0
+
 Unicode 字符串 |Unicode 字符串将自动的按 Content-Type 头中定义的编码格式进行编码（默认为UTF8），然后按普通的字符串进行处理
+
 字节串（Byte strings）|	Bottle 返回整个字符串（而不是按字节一个一个返回），同 时设置Content-Length 头为字节串长度，如果是通过yeild返回的字节字符串，则不设置该头部信息。
+
 HTTPError 与HTTPResponse 实例|	返回这些实例就像抛出异常一样，对于 HTTPError，错误将被相关函数处理
+
 文件对象|	任何具有`.read()` 方法的对象都被看作文件或者类似文件的对象进行处理，并传送给 WSGI 服务器框架定义的wsgi.file_wrapper 回调函数，某些WSGI服务器会使用系统优化的请求方式（Sendfile）来发送文件。
+
 迭代器与生成器|	你可以在你的回调函数使用 yield 或者 返回一个迭代器，只要yield的对象是字符串，Unicode 字符串，HTTPError 或者 HTTPResponse 对象就行，但是不允许使用嵌套的迭代器，需要注意的是，当`yield` 的值第一次为非空时， HTTP 的状态 和 头文件将被发送到 浏览器
+
 
 上面的顺序非常重要，如果你返回一个继承自str的类实例，并且带有 read() 方法，那它还是将按字符串进行处理，因为字符串有更高一级的优先处理权。
 
