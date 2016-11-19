@@ -418,7 +418,7 @@ def do_login():
 Bottle还提供了其他一些方式来获取数据：
 
 Attribute | GET Form fields	| POST Form fields |	File Uploads
------------- | ------------- | ------------- | -------------
+:----------------|----------------|------|-----
 BaseRequest.query	|yes	|no|	no
 BaseRequest.forms|	no|	yes	|no
 BaseRequest.files|	no	|no|	yes
@@ -474,3 +474,195 @@ def show_ip():
     # or ip = request['REMOTE_ADDR']
     return template("Your IP is: {{ip}}", ip=ip)
 ```
+
+### 模板
+
+Bottle内置了一个模板引擎-SimpleTemplate Engine，可以使用template()方法或者view()修饰器来渲染模板。你只需要传递模板名和变量作为参数。
+
+```python
+@route('/hello')
+@route('/hello/<name>')
+def hello(name='World'):
+    return template('hello_template', name=name)
+```
+
+Bottle默认在./views/目录中查找模板文件，也可以用bottle.TEMPLATE_PATH指定目录。
+
+使用views()修饰器改写上面的代码：
+```python
+@route('/hello')
+@route('/hello/<name>')
+@view('hello_template')
+def hello(name='World'):
+    return dict(name=name)
+```
+
+#### 模板语法
+
+```python
+%if name == 'World':
+    <h1>Hello {{name}}!</h1>
+    <p>This is a test.</p>
+%else:
+    <h1>Hello {{name.title()}}!</h1>
+    <p>How are you?</p>
+%end
+Caching
+```
+
+#### 缓存
+
+模板被编译之后会缓存至内存中，你可以使用 bottle.TEMPLATES.clear() 去手工清除它们。在debug模式下缓存是被禁用的。
+
+### 插件
+
+Bottle的核心功能可以满足大多数要求，但是既然是微型框架，所以肯定有很多限制，所以Bottle还提供了插件来满足其它需求。
+
+可以自己开发Bottle插件，下面是使用SQLitePlugin的例子：
+```
+from bottle import route, install, template
+from bottle_sqlite import SQLitePlugin
+
+install(SQLitePlugin(dbfile='/tmp/test.db'))
+
+@route('/show/<post_id:int>')
+def show(db, post_id):
+    c = db.execute('SELECT title, content FROM posts WHERE id = ?', (post_id,))
+    row = c.fetchone()
+    return template('show_post', title=row['title'], text=row['content'])
+
+@route('/contact')
+def contact_page():
+    ''' This callback does not need a db connection. Because the 'db'
+        keyword argument is missing, the sqlite plugin ignores this callback
+        completely. '''
+    return template('contact')
+```
+
+#### 在整个应用中安装插件
+插件可以被安装到整个应用中，或者仅仅只针对某几个路由安装，绝大多数插件都被安装到整个应用中，以为所有路由服务。要安装一个插件，只需要将插件的名称作为第一个参数传递给 install() 函数即可：
+```python
+from bottle_sqlite import SQLitePlugin
+install(SQLitePlugin(dbfile='/tmp/test.db'))
+```
+
+#### 卸载插件
+
+你可以使用名称，类或者对象来卸载一个已经安装的插件
+```
+sqlite_plugin = SQLitePlugin(dbfile='/tmp/test.db')
+install(sqlite_plugin)
+uninstall(sqlite_plugin) #卸载特定的插件
+uninstall(SQLitePlugin) #卸载该类的所的实例
+uninstall('sqlite')          # 卸载所有具有该名称的插件
+uninstall(True)            # 一次性卸载所有已安装的插件
+```
+
+插件可以在任何时间安装与卸载，甚至是处理某个请求的回调函数中，每一次已经安装的插件树更新时， 路由缓存都会跟着更新。
+
+#### 与路由绑定的插件安装
+```python
+sqlite_plugin = SQLitePlugin(dbfile=’/tmp/test.db’)
+@route(’/create’, apply=[sqlite_plugin])
+def create(db):
+    db.execute(‘INSERT INTO ….’)
+```
+
+#### 插件黑名单
+如果可以使用 route() 方法中的 skip 参数指定插件黑名单，如下：
+```python
+sqlite_plugin = SQLitePlugin(dbfile='/tmp/test.db')
+install sqlite_plugin)
+@route('/open/:db', skip=[sqlite_plugin])
+def open_db(db):
+    if db in ['test','test2']:
+        sqlite_plugin.dbfile = '/tmp/{}.db'.format(db)
+        return 'Database File Switched to : /tmp/{}.db'.format(db)
+    abort(404, 'No such database')
+```
+
+### 开发
+
+#### 默认应用
+
+Bottle 维护着一份 Bottle 实例的栈，而 route() 其实是对 Bottle.route() 的快捷访问，以这种方法产生的路由都属于默认应用：
+```
+@route('/')
+def hello():
+    return 'Hello World'
+```
+
+对于小应用来说，这已经足够了，但是随着应用的不断增大，这种方法显然不容易维护，所以我们可以使用子应用，将整个项目的功能细分：
+```python
+blog = Bottle()
+@blog.route('/')
+def index():
+    return 'This is blog Index page'
+```
+
+将应用分离之后，程序的维护性提高了很多，而且可重用性也提高很多，其它的开发人员就可以放心的从你的模块中导入应用程序对象，并使用 Bottle.mount() 将你的应用与他们的应用整全到一起。另外一种替代方法，你可以使用 应用栈 ，这让你可以在所有子应用中都使用默认的 route 方法：
+```python
+default_app.push()
+@route('/')
+def hello():
+    return 'Hello World'
+app = default_app.pop()
+```
+
+app() 与 default_app() 都是 AppStack 的实例，并且实现的类 Stack的API，你可以 Push 或者 Pop应用到这个 stack 中。
+
+#### DEBUG模式
+
+在开发的前期，Debug 模式将非常有助于你的开发：
+```
+bottle.debug(True)
+```
+在这种模式下，Bottle 可以提供更多的 debugging 信息，即使程序出现一个错误，它同时还关闭了一些优化功能，添加了一些配置的检测功能，下面是该模式不完整的功能列表：
+
+默认错误页面将返回一个对该错误的跟踪
+模板不会被缓存
+插件将立即被安装
+
+#### 自动重载
+在开发的过程，你可能需要经常修改你的代码，又经常需要重启你的服务器以更新这些修改，Bottle 提供了一个自动重载的工具，这使得你对任何一个应用中的文件的修改都会被及时的更新到运行中的应用中：
+```
+from bottle import run
+run(reloader=True)
+```
+
+reloader 是这么工作的： 主进程并不会启动服务器，但是它会按照同样的参数创建一个子进程，这使得所有模块级的代码都会被运行两次。子进程的运行环境中会有一个叫作 os.environ['BOTTLE_CHILD'] = True 的参数，当任何一个已经加载的模块有修改时，子进程会被停止，然后由主进程重新开启新的子进程，对模板的修改将不会引发一次重载。
+
+重载是基于是否可以关闭子进程的，如果你运行在 Windows 或者任何其它不支持 signal.SIGINT 的操作系统上时，signal.SIGTERM被用来终止子进程。
+
+#### 命令行接口
+```
+$ python -m bottle
+
+Usage: bottle.py [options] package.module:app
+
+Options:
+  -h, --help            show this help message and exit
+  --version             show version number.
+  -b ADDRESS, --bind=ADDRESS
+                        bind socket to ADDRESS.
+  -s SERVER, --server=SERVER
+                        use SERVER as backend.
+  -p PLUGIN, --plugin=PLUGIN
+                        install additional plugin/s.
+  -c FILE, --conf=FILE  load config values from FILE.
+  -C NAME=VALUE, --param=NAME=VALUE
+                        override config values.
+  --debug               start server in debug mode.
+  --reload              auto-reload on file changes.
+```
+
+### 部署
+
+Bottle 默认是运行在内置的 wsgiref WSGIServer上的，该无线程服务器对于开发来说再好不过了，但是对于日渐壮大的应用来说很容易成为瓶颈。
+
+提高效率的最快速的办法，就是将应用部属到一个多线程的服务器或者类似 Asynchronous WSGI 的服务器上，比如 paste 或者 cherrypy ，并且告诉 Bottle 以这些服务器启动，而不是自己内置的服务器。
+
+```
+bottle.run(server='paste')
+```
+
