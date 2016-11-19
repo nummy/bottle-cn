@@ -416,7 +416,7 @@ def do_login():
 
 Bottle还提供了其他一些方式来获取数据：
 Attribute | GET Form fields	| POST Form fields |	File Uploads
-:----------------|----------------|------|-----
+------------ | ------------- | ------------- | -------------
 BaseRequest.query	|yes	|no|	no
 BaseRequest.forms|	no|	yes	|no
 BaseRequest.files|	no	|no|	yes
