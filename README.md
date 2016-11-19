@@ -183,19 +183,12 @@ Bottle则支持了更多的数据类型，它甚至添加了一个 Content-Lengt
 数据类型|	介绍
 -------------------|-------------------------
 字典	|Python 内置的字典类型数据将被自动被转换为JSON 字符串，并且添加头部信息Content-Type为 'application/json' 的头信息返回至浏览器，这让我们可以很方便的建立基于JSON的API
-
 空字符串，False，None或者任何非真的数据 |	Bottle返回空，Content-Length设置为0
-
 Unicode 字符串 |Unicode 字符串将自动的按 Content-Type 头中定义的编码格式进行编码（默认为UTF8），然后按普通的字符串进行处理
-
 字节串（Byte strings）|	Bottle 返回整个字符串（而不是按字节一个一个返回），同 时设置Content-Length 头为字节串长度，如果是通过yeild返回的字节字符串，则不设置该头部信息。
-
 HTTPError 与HTTPResponse 实例|	返回这些实例就像抛出异常一样，对于 HTTPError，错误将被相关函数处理
-
 文件对象|	任何具有`.read()` 方法的对象都被看作文件或者类似文件的对象进行处理，并传送给 WSGI 服务器框架定义的wsgi.file_wrapper 回调函数，某些WSGI服务器会使用系统优化的请求方式（Sendfile）来发送文件。
-
 迭代器与生成器|	你可以在你的回调函数使用 yield 或者 返回一个迭代器，只要yield的对象是字符串，Unicode 字符串，HTTPError 或者 HTTPResponse 对象就行，但是不允许使用嵌套的迭代器，需要注意的是，当`yield` 的值第一次为非空时， HTTP 的状态 和 头文件将被发送到 浏览器
-
 
 上面的顺序非常重要，如果你返回一个继承自str的类实例，并且带有 read() 方法，那它还是将按字符串进行处理，因为字符串有更高一级的优先处理权。
 
@@ -386,3 +379,96 @@ def is_ajax():
 
 #### 查询字符串
 
+查询字符串常常被用来传递一些小数目的键值对参数到服务器，你可以使用 Request.query对其进行访问，使用 Request.query_string来获得整个字符串：
+```
+from bottle import route, request, response, template
+@route('/forum')
+def display_forum():
+    forum_id = request.query.id
+    page = request.query.page or '1'
+    return template('Forum ID: {{id}} (page {{page}})', id=forum_id, page=page)
+```
+
+#### 表单数据
+表单数据存储在BaseRequest.forms中，以FormsDict的形式保存。
+```
+from bottle import route, request
+
+@route('/login')
+def login():
+    return '''
+        <form action="/login" method="post">
+            Username: <input name="username" type="text" />
+            Password: <input name="password" type="password" />
+            <input value="Login" type="submit" />
+        </form>
+    '''
+
+@route('/login', method='POST')
+def do_login():
+    username = request.forms.get('username')
+    password = request.forms.get('password')
+    if check_login(username, password):
+        return "<p>Your login information was correct.</p>"
+    else:
+        return "<p>Login failed.</p>"
+```
+
+Bottle还提供了其他一些方式来获取数据：
+Attribute | GET Form fields	| POST Form fields |	File Uploads
+:----------------|----------------|------|-----
+BaseRequest.query	|yes	|no|	no
+BaseRequest.forms|	no|	yes	|no
+BaseRequest.files|	no	|no|	yes
+BaseRequest.params	|yes	|yes|	no
+BaseRequest.GET	|yes	|no|	no
+BaseRequest.POST|	no|	yes	|yes
+
+
+#### 文件上传
+
+Bottle将上传的文件保存在BaseRequest.files中，以FileUploads实例的方式保存。
+
+上传表单定义如下：
+```
+<form action="/upload" method="post" enctype="multipart/form-data">
+  Category:      <input type="text" name="category" />
+  Select a file: <input type="file" name="upload" />
+  <input type="submit" value="Start upload" />
+</form>
+```
+后端代码如下：
+```
+@route('/upload', method='POST')
+def do_upload():
+    category   = request.forms.get('category')
+    upload     = request.files.get('upload')
+    name, ext = os.path.splitext(upload.filename)
+    if ext not in ('.png','.jpg','.jpeg'):
+        return 'File extension not allowed.'
+
+    save_path = get_save_path_for_category(category)
+    upload.save(save_path) # appends upload.filename automatically
+    return 'OK'
+```
+
+FileUpload.filename保存了客户端上传文件的名字，但是它经过了一些处理，如果需要获取原始的文件名，应该使用FileUpload.raw_filename。
+
+推荐使用FileUpload.save方法将文件保存到服务器，因为它更加高效，还可以通过FileUpload.file访问文件。
+
+#### JSON数据
+如果客户端以JSON的格式传递过来，可以使用BaseRequest.json 获取数据。
+
+#### 原始请求数据
+如果想要获取原始的请求数据，可以访问 BaseRequest.body。
+
+#### WSGI环境
+每个BaseRequest实例包含一个WSGI环境字典，它保存在BaseRequest.environ中，如果你需要直接访问这些数据，可以这样做：
+```
+@route('/my_ip')
+def show_ip():
+    ip = request.environ.get('REMOTE_ADDR')
+    # or ip = request.get('REMOTE_ADDR')
+    # or ip = request['REMOTE_ADDR']
+    return template("Your IP is: {{ip}}", ip=ip)
+```
